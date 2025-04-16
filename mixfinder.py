@@ -288,14 +288,23 @@ def apply_ingredient(effects, ingredient):
     new_effects = effects.copy()
     rule = effect_rules.get(ingredient, {"replaces": {}, "adds": []})
 
-    # 1. Apply replacements
+    # Phase 1: Plan all replacements
+    to_remove = []
+    to_add = []
+
     for old, new in rule.get("replaces", {}).items():
         if old in new_effects:
-            new_effects.remove(old)
+            to_remove.append(old)
             if new and new not in new_effects:
-                new_effects.append(new)
+                to_add.append(new)
 
-    # 2. Add static effects, if room
+    # Phase 2: Apply all at once
+    for eff in to_remove:
+        new_effects.remove(eff)
+    for eff in to_add:
+        new_effects.append(eff)
+
+    # Apply additions (if room)
     for eff in rule.get("adds", []):
         if eff not in new_effects and len(new_effects) < MAX_EFFECTS:
             new_effects.append(eff)
@@ -337,12 +346,22 @@ def bfs_worker_process(args, progress_queue):
             new_effects = current["effects"].copy()
             rule = effect_rules.get(ingredient, {"replaces": {}, "adds": []})
 
+            # Phase 1: batch replacements
+            to_remove = []
+            to_add = []
+
             for old, new in rule.get("replaces", {}).items():
                 if old in new_effects:
-                    new_effects.remove(old)
+                    to_remove.append(old)
                     if new and new not in new_effects:
-                        new_effects.append(new)
+                        to_add.append(new)
 
+            for eff in to_remove:
+                new_effects.remove(eff)
+            for eff in to_add:
+                new_effects.append(eff)
+
+            # Phase 2: Add static effects
             for eff in rule.get("adds", []):
                 if eff not in new_effects and len(new_effects) < MAX_EFFECTS:
                     new_effects.append(eff)
