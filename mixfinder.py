@@ -210,6 +210,74 @@ effect_rules = {
     }
 }
 
+# Base prices for each product
+base_prices = {
+    'OG Kush': 38,
+    'Sour Diesel': 40,
+    'Green Crack': 43,
+    'Granddaddy Purple': 44,
+    'Meth': 70,
+    'Cocaine': 80
+}
+
+# Ingredient costs
+ingredient_costs = {
+    'Cuke': 2,
+    'Banana': 2,
+    'Paracetamol': 3,
+    'Donut': 3,
+    'Viagra': 4,
+    'Mouth Wash': 4,
+    'Flu Medicine': 5,
+    'Gasoline': 5,
+    'Energy Drink': 6,
+    'Motor Oil': 6,
+    'Mega Bean': 7,
+    'Chili': 7,
+    'Battery': 8,
+    'Iodine': 8,
+    'Addy': 9,
+    'Horse Semen': 9
+}
+
+# Effect price multipliers
+effect_multipliers = {
+    'Anti-Gravity': 0.54,
+    'Athletic': 0.32,
+    'Balding': 0.30,
+    'Bright-Eyed': 0.40,
+    'Calming': 0.10,
+    'Calorie-Dense': 0.28,
+    'Cyclopean': 0.56,
+    'Disorienting': 0.00,
+    'Electrifying': 0.50,
+    'Energizing': 0.22,
+    'Euphoric': 0.18,
+    'Explosive': 0.00,
+    'Focused': 0.16,
+    'Foggy': 0.36,
+    'Gingeritis': 0.20,
+    'Glowing': 0.48,
+    'Jennerising': 0.42,
+    'Laxative': 0.00,
+    'Long Faced': 0.52,
+    'Munchies': 0.12,
+    'Paranoia': 0.00,
+    'Refreshing': 0.14,
+    'Schizophrenia': 0.00,
+    'Sedating': 0.26,
+    'Seizure-Inducing': 0.00,
+    'Shrinking': 0.60,
+    'Slippery': 0.34,
+    'Smelly': 0.00,
+    'Sneaky': 0.24,
+    'Spicy': 0.38,
+    'Thought-Provoking': 0.44,
+    'Toxic': 0.00,
+    'Tropic Thunder': 0.46,
+    'Zombifying': 0.58
+}
+
 # Desired goal checker
 def is_goal(state_effects, desired_effects):
     return all(effect in state_effects for effect in desired_effects)
@@ -374,10 +442,13 @@ def prompt_user_for_effects():
 
         print("Available effects:")
         for idx, effect in enumerate(remaining):
-            print(f"{idx}: {effect}")
+            mult = effect_multipliers.get(effect, 0.0)
+            print(f"{idx}: {effect} (+{mult:.2f}x)")
         print("\nType a number, name (or part of one), or 'm' to mix.\n")
 
         print(f"Current effects: {selected}")
+        total_multiplier = 1.0 + sum(effect_multipliers.get(e, 0.0) for e in selected)
+        print(f"\n🔢 Total effect multiplier: x{total_multiplier:.2f}")
         choice = input("Pick an effect: ").strip().lower()
 
         if choice in ("m", "mix"):
@@ -466,6 +537,22 @@ if __name__ == "__main__":
             print(f"Start with: {solution['base']}")
             print(f"Ingredients: {' -> '.join(solution['path'])}")
             print(f"Final Effects: {', '.join(solution['effects'])}")
+            
+            # --- Value/Profit Calculation ---
+            base_name = solution['base']
+            base_price = base_prices.get(base_name, 0)
+            ingredient_cost = sum(ingredient_costs.get(ing, 0) for ing in solution["path"])
+            total_multiplier = 1.0 + sum(effect_multipliers.get(eff, 0.0) for eff in solution["effects"])
+            final_value = base_price * total_multiplier
+            profit = final_value - ingredient_cost
+
+            print("\n💸 Final Financial Summary:")
+            print(f"🧪 Base Product: {base_name} (Recommended price: ${base_price})")
+            print(f"🧾 Ingredients Used: {', '.join(solution['path'])}")
+            print(f"💰 Ingredient Cost: ${ingredient_cost:.2f}")
+            print(f"📈 Total Multiplier: x{total_multiplier:.2f}")
+            print(f"🏷 Final Product Value: ${final_value:.2f}")
+            print(f"📊 Profit: ${profit:.2f}")
             
             print_debug_steps(solution, show_debug=True)
         else:
