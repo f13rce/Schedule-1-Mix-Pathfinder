@@ -288,23 +288,23 @@ def apply_ingredient(effects, ingredient):
     new_effects = effects.copy()
     rule = effect_rules.get(ingredient, {"replaces": {}, "adds": []})
 
-    # Phase 1: Plan all replacements
+    # Phase 1: Prepare replacements safely (no collision)
     to_remove = []
     to_add = []
+    current_set = set(new_effects)
 
     for old, new in rule.get("replaces", {}).items():
-        if old in new_effects:
+        if old in current_set and new and new not in current_set:
             to_remove.append(old)
-            if new and new not in new_effects:
-                to_add.append(new)
+            to_add.append(new)
 
-    # Phase 2: Apply all at once
+    # Phase 2: Apply them
     for eff in to_remove:
         new_effects.remove(eff)
     for eff in to_add:
         new_effects.append(eff)
 
-    # Apply additions (if room)
+    # Phase 3: Add static effects (if room)
     for eff in rule.get("adds", []):
         if eff not in new_effects and len(new_effects) < MAX_EFFECTS:
             new_effects.append(eff)
@@ -350,11 +350,11 @@ def bfs_worker_process(args, progress_queue):
             to_remove = []
             to_add = []
 
+            current_set = set(new_effects)
             for old, new in rule.get("replaces", {}).items():
-                if old in new_effects:
+                if old in current_set and new and new not in current_set:
                     to_remove.append(old)
-                    if new and new not in new_effects:
-                        to_add.append(new)
+                    to_add.append(new)
 
             for eff in to_remove:
                 new_effects.remove(eff)
@@ -382,13 +382,32 @@ def bfs_worker_process(args, progress_queue):
     return None
 
 # Multi-process BFS dispatcher
-def bfs_solver_multiprocessing(desired_effects, max_depth=16):
+def bfs_solver_multiprocessing(desired_effects, starting_product_choice, max_depth=16):
     total_per_base = sum(len(effect_rules) ** i for i in range(1, max_depth + 1))
-    total = total_per_base * len(base_products)
+
+    # Filter base products
+    if starting_product_choice == 0:
+        filtered_products = base_products
+    elif starting_product_choice == 1:
+        filtered_products = {k: v for k, v in base_products.items() if k in ['OG Kush', 'Granddaddy Purple', 'Green Crack', 'Sour Diesel']}
+    elif starting_product_choice == 2:
+        filtered_products = {'Meth': []}
+    elif starting_product_choice == 3:
+        filtered_products = {'Cocaine': []}
+    elif starting_product_choice == 4:
+        filtered_products = {'OG Kush': base_products.get('OG Kush', [])}
+    elif starting_product_choice == 5:
+        filtered_products = {'Granddaddy Purple': base_products.get('Granddaddy Purple', [])}
+    elif starting_product_choice == 6:
+        filtered_products = {'Green Crack': base_products.get('Green Crack', [])}
+    else:
+        filtered_products = base_products  # fallback
+
+    total = total_per_base * len(filtered_products)
 
     args_list = [
         (base, effects, desired_effects, max_depth, effect_rules)
-        for base, effects in base_products.items()
+        for base, effects in filtered_products.items()
     ]
 
     manager = Manager()
@@ -426,6 +445,27 @@ def bfs_solver_multiprocessing(desired_effects, max_depth=16):
                     return res
 
     return None
+
+def prompt_starting_product():
+    print("\n🌱 Which starting product would you like?")
+    options = [
+        "Anything",
+        "Weed only",
+        "Meth only",
+        "Cocaine only",
+        "OG Kush",
+        "Granddaddy Purple",
+        "Green Crack"
+    ]
+
+    for i, name in enumerate(options):
+        print(f"{i}: {name}")
+    
+    while True:
+        choice = input("\nPick an option (number): ").strip()
+        if choice.isdigit() and 0 <= int(choice) < len(options):
+            return int(choice)
+        print("❌ Invalid choice. Try again.")
 
 def prompt_user_for_effects():
     import os
@@ -548,8 +588,9 @@ if __name__ == "__main__":
         from multiprocessing import freeze_support
         freeze_support()
 
+        starting_choice = prompt_starting_product()
         desired = prompt_user_for_effects()
-        solution = bfs_solver_multiprocessing(desired)
+        solution = bfs_solver_multiprocessing(desired, starting_choice)
 
         if solution:
             print("✅ Solution Found!")
