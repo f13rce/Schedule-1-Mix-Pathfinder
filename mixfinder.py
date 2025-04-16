@@ -62,7 +62,7 @@ effect_rules = {
             "Focused": "Euphoric",
             "Anti-Gravity": None
         },
-        "adds": ["Calorie-Dense", "Balding"]
+        "adds": ["Calorie-Dense"]
     },
     "Cuke": {
         "replaces": {
@@ -82,7 +82,7 @@ effect_rules = {
             "Euphoric": "Energizing",
             "Sedating": "Munchies"
         },
-        "adds": ["Athletic", "Tropic Thunder"]
+        "adds": ["Athletic"]
     },
     "Iodine": {
         "replaces": {
