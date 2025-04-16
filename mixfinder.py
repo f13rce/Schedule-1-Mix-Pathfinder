@@ -371,6 +371,46 @@ def prompt_user_for_effects():
 
     return selected
 
+def print_debug_steps(solution, show_debug=True):
+    if not show_debug:
+        return
+
+    print("\n🔍 Debugging Mix Path...\n")
+    print(f"Start with: {solution['base']}")
+    effects = base_products[solution['base']].copy()
+
+    for i, ingredient in enumerate(solution["path"], 1):
+        rule = effect_rules[ingredient]
+        prev_effects = effects.copy()
+
+        replaced = []
+        added = []
+
+        # Apply replacements
+        for old, new in rule.get("replaces", {}).items():
+            if old in effects:
+                replaced.append((old, new))
+                effects.remove(old)
+                if new and new not in effects:
+                    effects.append(new)
+
+        # Apply additions
+        for eff in rule.get("adds", []):
+            if eff not in effects and len(effects) < MAX_EFFECTS:
+                added.append(eff)
+                effects.append(eff)
+
+        print(f"\nStep {i}/{len(solution['path'])}:")
+        print(f"Add: {ingredient}")
+        print("Effects replaced:")
+        for old, new in replaced:
+            print(f" - {old} → {new if new else '❌ removed'}")
+        print("Effects gained:")
+        for eff in added:
+            print(f" + {eff}")
+        print("All effects after adding:")
+        print(f" → {', '.join(sorted(effects))}")
+
 if __name__ == "__main__":
     try:
         from multiprocessing import freeze_support
@@ -384,6 +424,8 @@ if __name__ == "__main__":
             print(f"Start with: {solution['base']}")
             print(f"Ingredients: {' -> '.join(solution['path'])}")
             print(f"Final Effects: {', '.join(solution['effects'])}")
+            
+            print_debug_steps(solution, show_debug=True)
         else:
             print("❌ No valid combination found within depth limit.")
     except KeyboardInterrupt as e:
