@@ -11,7 +11,9 @@ base_products = {
     'OG Kush': ['Calming'],
     'Granddaddy Purple': ['Sedating'],
     'Green Crack': ['Energizing'],
-    'Sour Diesel': ['Refreshing']
+    'Sour Diesel': ['Refreshing'],
+    'Meth': [],
+    'Cocaine': [],
 }
 
 # Full list of ingredients and how they transform effects
