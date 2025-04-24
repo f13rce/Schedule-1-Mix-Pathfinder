@@ -773,7 +773,7 @@ if __name__ == "__main__":
                 print(f"💰 Ingredient Cost: ${ingredient_cost:.2f}")
                 print(f"📈 Total Multiplier: x{total_multiplier:.2f}")
                 print(f"🏷 Final Product Value: ${final_value:.2f}")
-                print(f"📊 Profit: ${profit:.2f}")
+                print(f"📊 Profit: ${profit:.2f} per baggie")
 
                 print_debug_steps(solution, show_debug=True)
             else:
