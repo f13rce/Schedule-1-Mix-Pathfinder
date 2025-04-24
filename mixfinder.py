@@ -313,6 +313,115 @@ def apply_ingredient(effects, ingredient):
 
     return sorted(set(new_effects))
 
+def bfs_worker_profit(args, progress_queue):
+    base_name, base_effects, max_depth, effect_rules = args
+    best_result = None
+    best_profit = float('-inf')
+
+    visited = {}
+    queue = deque()
+    steps = 0
+
+    initial_state = {
+        "effects": base_effects.copy(),
+        "path": []
+    }
+    queue.append(initial_state)
+    visited[tuple(sorted(base_effects))] = 0
+
+    while queue:
+        current = queue.popleft()
+        steps += 1
+
+        if steps % 1000 == 0:
+            progress_queue.put(1000)
+
+        # Calculate profit
+        unique_effects = sorted(set(current["effects"]))
+        if len(current["path"]) <= max_depth:
+            base_price = base_prices.get(base_name, 0)
+            ingredient_cost = sum(ingredient_costs.get(ing, 0) for ing in current["path"])
+            total_multiplier = 1.0 + sum(effect_multipliers.get(eff, 0.0) for eff in unique_effects)
+            final_value = base_price * total_multiplier
+            profit = final_value - ingredient_cost
+
+            if profit > best_profit:
+                best_result = {
+                    "base": base_name,
+                    "effects": unique_effects,
+                    "path": current["path"]
+                }
+                best_profit = profit
+
+        if len(current["path"]) >= max_depth:
+            continue
+
+        for ingredient in effect_rules:
+            new_effects = apply_ingredient(current["effects"], ingredient)
+            new_path = current["path"] + [ingredient]
+            signature = tuple(sorted(new_effects))
+
+            if visited.get(signature, float('inf')) > len(new_path):
+                visited[signature] = len(new_path)
+                queue.append({
+                    "effects": new_effects,
+                    "path": new_path
+                })
+
+    progress_queue.put(steps % 1000)
+    return best_result
+
+def bfs_solver_multiprocessing_profit(starting_product_choice, max_depth=8):
+    # Filter product
+    if starting_product_choice in base_products:
+        filtered_products = {starting_product_choice: base_products[starting_product_choice]}
+    else:
+        print("❌ Invalid base product.")
+        return None
+
+    total = sum(len(effect_rules) ** i for i in range(1, max_depth + 1))
+
+    args_list = [
+        (base, effects, max_depth, effect_rules)
+        for base, effects in filtered_products.items()
+    ]
+
+    manager = Manager()
+    progress_queue = manager.Queue()
+
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(bfs_worker_profit, args, progress_queue) for args in args_list]
+
+        with tqdm(total=total, desc="💸 Calculating Profit...", ncols=80) as pbar:
+            result = None
+            while any(f.done() is False for f in futures):
+                try:
+                    while not progress_queue.empty():
+                        pbar.update(progress_queue.get_nowait())
+                except:
+                    pass
+                time.sleep(0.1)
+
+            while not progress_queue.empty():
+                pbar.update(progress_queue.get_nowait())
+
+            best = None
+            best_profit = float('-inf')
+            for future in futures:
+                res = future.result()
+                if res:
+                    base_name = res['base']
+                    base_price = base_prices.get(base_name, 0)
+                    cost = sum(ingredient_costs.get(i, 0) for i in res["path"])
+                    multiplier = 1.0 + sum(effect_multipliers.get(e, 0.0) for e in res["effects"])
+                    value = base_price * multiplier
+                    profit = value - cost
+
+                    if profit > best_profit:
+                        best_profit = profit
+                        best = res
+            return best
+
 # BFS worker for a single base product (standalone, must be top-level for multiprocessing)
 def bfs_worker_process(args, progress_queue):
     base_name, base_effects, desired_effects, max_depth, effect_rules = args
@@ -590,34 +699,77 @@ if __name__ == "__main__":
         from multiprocessing import freeze_support
         freeze_support()
 
+        print("\n🔬 Schedule 1 Mix Finder")
+        print("1. Find a mix with desired effects")
+        print("2. Find the most profitable mix\n")
+
+        while True:
+            mode = input("Choose mode (1 or 2): ").strip()
+            if mode in ("1", "2"):
+                break
+            print("❌ Invalid choice. Please type 1 or 2.")
+
         starting_choice = prompt_starting_product()
-        desired = prompt_user_for_effects()
-        solution = bfs_solver_multiprocessing(desired, starting_choice)
 
-        if solution:
-            print("✅ Solution Found!")
-            print(f"Start with: {solution['base']}")
-            print(f"Ingredients: {' -> '.join(solution['path'])}")
-            print(f"Final Effects: {', '.join(solution['effects'])}")
-            
-            # --- Value/Profit Calculation ---
-            base_name = solution['base']
-            base_price = base_prices.get(base_name, 0)
-            ingredient_cost = sum(ingredient_costs.get(ing, 0) for ing in solution["path"])
-            total_multiplier = 1.0 + sum(effect_multipliers.get(eff, 0.0) for eff in solution["effects"])
-            final_value = base_price * total_multiplier
-            profit = final_value - ingredient_cost
+        if mode == "1":
+            desired = prompt_user_for_effects()
+            solution = bfs_solver_multiprocessing(desired, starting_choice)
 
-            print("\n💸 Final Financial Summary:")
-            print(f"🧪 Base Product: {base_name} (Recommended price: ${base_price})")
-            print(f"🧾 Ingredients Used: {', '.join(solution['path'])}")
-            print(f"💰 Ingredient Cost: ${ingredient_cost:.2f}")
-            print(f"📈 Total Multiplier: x{total_multiplier:.2f}")
-            print(f"🏷 Final Product Value: ${final_value:.2f}")
-            print(f"📊 Profit: ${profit:.2f}")
-            
-            print_debug_steps(solution, show_debug=True)
-        else:
-            print("❌ No valid combination found within depth limit.")
-    except KeyboardInterrupt as e:
-        print("Goodbye :)")
+            if solution:
+                print("✅ Solution Found!")
+                print(f"Start with: {solution['base']}")
+                print(f"Ingredients: {' -> '.join(solution['path'])}")
+                print(f"Final Effects: {', '.join(solution['effects'])}")
+                
+                # Value/Profit Calculation
+                base_name = solution['base']
+                base_price = base_prices.get(base_name, 0)
+                ingredient_cost = sum(ingredient_costs.get(ing, 0) for ing in solution["path"])
+                total_multiplier = 1.0 + sum(effect_multipliers.get(eff, 0.0) for eff in solution["effects"])
+                final_value = base_price * total_multiplier
+                profit = final_value - ingredient_cost
+
+                print("\n💸 Final Financial Summary:")
+                print(f"🧪 Base Product: {base_name} (Recommended price: ${base_price})")
+                print(f"🧾 Ingredients Used: {', '.join(solution['path'])}")
+                print(f"💰 Ingredient Cost: ${ingredient_cost:.2f}")
+                print(f"📈 Total Multiplier: x{total_multiplier:.2f}")
+                print(f"🏷 Final Product Value: ${final_value:.2f}")
+                print(f"📊 Profit: ${profit:.2f}")
+
+                print_debug_steps(solution, show_debug=True)
+            else:
+                print("❌ No valid combination found within depth limit.")
+        
+        elif mode == "2":
+            max_ingredients = 8
+            base_names = list(base_products.keys())
+            base_name = base_names[starting_choice] if starting_choice < len(base_names) else "OG Kush"
+            solution = bfs_solver_multiprocessing_profit(base_name, max_depth=max_ingredients)
+
+            if solution:
+                print("💸 Best Profit Mix Found!")
+                print(f"Start with: {solution['base']}")
+                print(f"Ingredients: {' -> '.join(solution['path'])}")
+                print(f"Final Effects: {', '.join(solution['effects'])}")
+
+                base_price = base_prices.get(solution['base'], 0)
+                ingredient_cost = sum(ingredient_costs.get(ing, 0) for ing in solution["path"])
+                total_multiplier = 1.0 + sum(effect_multipliers.get(eff, 0.0) for eff in solution["effects"])
+                final_value = base_price * total_multiplier
+                profit = final_value - ingredient_cost
+
+                print("\n💸 Final Financial Summary:")
+                print(f"🧪 Base Product: {solution['base']} (Recommended price: ${base_price})")
+                print(f"🧾 Ingredients Used: {', '.join(solution['path'])}")
+                print(f"💰 Ingredient Cost: ${ingredient_cost:.2f}")
+                print(f"📈 Total Multiplier: x{total_multiplier:.2f}")
+                print(f"🏷 Final Product Value: ${final_value:.2f}")
+                print(f"📊 Profit: ${profit:.2f}")
+
+                print_debug_steps(solution, show_debug=True)
+            else:
+                print("❌ No profitable mix found.")
+    
+    except KeyboardInterrupt:
+        print("\n👋 Goodbye!")
