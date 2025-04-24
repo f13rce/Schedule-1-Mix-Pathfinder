@@ -154,7 +154,7 @@ effect_rules = {
         "replaces": {
             "Paranoia": "Calming",
             "Electrifying": "Disorienting",
-            "Energizing": "Spicy",
+            "Energizing": "Euphoric",
             "Shrinking": "Focused",
             "Laxative": "Foggy",
             "Disorienting": "Glowing",
@@ -239,7 +239,7 @@ ingredient_costs = {
     'Battery': 8,
     'Iodine': 8,
     'Addy': 9,
-    'Horse Semen': 9
+    'Horse Semen': 9,
 }
 
 # Effect price multipliers
@@ -287,31 +287,56 @@ def is_goal(state_effects, desired_effects):
 MAX_EFFECTS = 8  # Set this globally
 
 def apply_ingredient(effects, ingredient):
-    new_effects = effects.copy()
     rule = effect_rules.get(ingredient, {"replaces": {}, "adds": []})
+    replaces = rule.get("replaces", {})
+    adds = rule.get("adds", [])
 
-    # Phase 1: Prepare replacements safely (no collision)
-    to_remove = []
-    to_add = []
-    current_set = set(new_effects)
+    original_effects = list(effects)
+    replacements = {}
+    removed_effects = set()
 
-    for old, new in rule.get("replaces", {}).items():
-        if old in current_set and new and new not in current_set:
-            to_remove.append(old)
-            to_add.append(new)
+    # Step 1: Plan all replacements based on original state
+    for old in original_effects:
+        if old in replaces:
+            new = replaces[old]
+            replacements[old] = new
+            removed_effects.add(old)
 
-    # Phase 2: Apply them
-    for eff in to_remove:
-        new_effects.remove(eff)
-    for eff in to_add:
-        new_effects.append(eff)
+    # Step 2: Apply replacements
+    updated_effects = []
+    for eff in original_effects:
+        if eff in replacements:
+            new_eff = replacements[eff]
+            updated_effects.append(new_eff)
+        else:
+            updated_effects.append(eff)
 
-    # Phase 3: Add static effects (if room)
-    for eff in rule.get("adds", []):
-        if eff not in new_effects and len(new_effects) < MAX_EFFECTS:
-            new_effects.append(eff)
+    # Step 3: Apply static additions, even if it was replaced out
+    for eff in adds:
+        if eff not in updated_effects or eff in removed_effects:
+            if len(updated_effects) < MAX_EFFECTS:
+                updated_effects.append(eff)
 
-    return sorted(set(new_effects))
+    # Step 4: De-dupe and return
+    return sorted(set(updated_effects))
+
+def filter_base_products(starting_product_choice):
+    if starting_product_choice == 0:
+        return base_products
+    elif starting_product_choice == 1:
+        return {k: v for k, v in base_products.items() if k in ['OG Kush', 'Granddaddy Purple', 'Green Crack', 'Sour Diesel']}
+    elif starting_product_choice == 2:
+        return {'Meth': []}
+    elif starting_product_choice == 3:
+        return {'Cocaine': []}
+    elif starting_product_choice == 4:
+        return {'OG Kush': base_products.get('OG Kush', [])}
+    elif starting_product_choice == 5:
+        return {'Granddaddy Purple': base_products.get('Granddaddy Purple', [])}
+    elif starting_product_choice == 6:
+        return {'Green Crack': base_products.get('Green Crack', [])}
+    else:
+        return base_products
 
 def bfs_worker_profit(args, progress_queue):
     base_name, base_effects, max_depth, effect_rules = args
@@ -372,14 +397,9 @@ def bfs_worker_profit(args, progress_queue):
     return best_result
 
 def bfs_solver_multiprocessing_profit(starting_product_choice, max_depth=8):
-    # Filter product
-    if starting_product_choice in base_products:
-        filtered_products = {starting_product_choice: base_products[starting_product_choice]}
-    else:
-        print("❌ Invalid base product.")
-        return None
+    filtered_products = filter_base_products(starting_product_choice)
 
-    total = sum(len(effect_rules) ** i for i in range(1, max_depth + 1))
+    total = sum(len(effect_rules) ** i for i in range(1, max_depth + 1)) * len(filtered_products)
 
     args_list = [
         (base, effects, max_depth, effect_rules)
@@ -578,16 +598,16 @@ def prompt_starting_product():
             return int(choice)
         print("❌ Invalid choice. Try again.")
 
+def print_banner():
+    banner = pyfiglet.figlet_format("S1MP", font="doom")
+    print(banner)
+    print("🔬 Schedule 1 Mix Pathfinder\n")
+
 def prompt_user_for_effects():
     import os
 
     def clear_screen():
         os.system('cls' if "nt" in os.name else 'clear')
-        
-    def print_banner():
-        banner = pyfiglet.figlet_format("S1MP", font="doom")
-        print(banner)
-        print("🔬 Schedule 1 Mix Pathfinder\n")
     
     # Step 1: Build full list of all possible effects
     all_effects = set()
@@ -663,43 +683,61 @@ def print_debug_steps(solution, show_debug=True):
     effects = base_products[solution['base']].copy()
 
     for i, ingredient in enumerate(solution["path"], 1):
-        rule = effect_rules[ingredient]
-        prev_effects = effects.copy()
+        rule = effect_rules.get(ingredient, {"replaces": {}, "adds": []})
+        replaces = rule.get("replaces", {})
+        adds = rule.get("adds", [])
 
-        replaced = []
-        added = []
+        original_effects = list(effects)
+        replacements = {}
+        removed_effects = set()
 
-        # Apply replacements
-        for old, new in rule.get("replaces", {}).items():
-            if old in effects:
-                replaced.append((old, new))
-                effects.remove(old)
-                if new and new not in effects:
-                    effects.append(new)
+        for old in original_effects:
+            if old in replaces:
+                replacements[old] = replaces[old]
+                removed_effects.add(old)
 
-        # Apply additions
-        for eff in rule.get("adds", []):
-            if eff not in effects and len(effects) < MAX_EFFECTS:
-                added.append(eff)
-                effects.append(eff)
+        updated_effects = []
+        replaced_log = []
+        for eff in original_effects:
+            if eff in replacements:
+                new_eff = replacements[eff]
+                updated_effects.append(new_eff)
+                replaced_log.append((eff, new_eff))
+            else:
+                updated_effects.append(eff)
+
+        added_log = []
+        for eff in adds:
+            if eff not in updated_effects or eff in removed_effects:
+                if len(updated_effects) < MAX_EFFECTS:
+                    updated_effects.append(eff)
+                    added_log.append(eff)
 
         print(f"\nStep {i}/{len(solution['path'])}:")
         print(f"Add: {ingredient}")
         print("Effects replaced:")
-        for old, new in replaced:
-            print(f" - {old} → {new if new else '❌ removed'}")
+        if replaced_log:
+            for old, new in replaced_log:
+                print(f" - {old} → {new}")
+        else:
+            print(" (none)")
         print("Effects gained:")
-        for eff in added:
-            print(f" + {eff}")
+        if added_log:
+            for eff in added_log:
+                print(f" + {eff}")
+        else:
+            print(" (none)")
         print("All effects after adding:")
-        print(f" → {', '.join(sorted(effects))}")
+        print(f" → {', '.join(sorted(set(updated_effects)))}")
+
+        effects = sorted(set(updated_effects))
 
 if __name__ == "__main__":
     try:
         from multiprocessing import freeze_support
         freeze_support()
 
-        print("\n🔬 Schedule 1 Mix Finder")
+        print_banner()
         print("1. Find a mix with desired effects")
         print("2. Find the most profitable mix\n")
 
