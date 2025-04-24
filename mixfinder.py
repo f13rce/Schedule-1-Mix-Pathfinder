@@ -219,7 +219,7 @@ base_prices = {
     'Green Crack': 43,
     'Granddaddy Purple': 44,
     'Meth': 70,
-    'Cocaine': 80
+    'Cocaine': 150,
 }
 
 # Ingredient costs
